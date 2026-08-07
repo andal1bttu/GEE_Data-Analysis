@@ -1,0 +1,68 @@
+// ===============================
+// 1. ROI
+// ===============================
+var roi = ee.FeatureCollection("projects/peaceful-crane-486406-v9/assets/Export_Output");
+
+// ===============================
+// 2. Load 10m DEM (FABDEM)
+// ===============================
+var dem = ee.Image("projects/sat-io/open-datasets/FABDEM/FABDEM_V1-2")
+            .select("b1")
+            .clip(roi);
+
+// ===============================
+// 3. Smooth DEM (VERY IMPORTANT)
+// ===============================
+var demSmooth = dem.focal_mean({
+  radius: 20,   //  smaller for 10m data
+  units: 'meters'
+});
+
+// ===============================
+// 4. Neighborhood (Scale-aware)
+// ===============================
+// 500m works well for groundwater
+var kernel = ee.Kernel.circle({
+  radius: 500,
+  units: 'meters',
+  normalize: true
+});
+
+// ===============================
+// 5. Mean elevation
+// ===============================
+var meanElev = demSmooth.reduceNeighborhood({
+  reducer: ee.Reducer.mean(),
+  kernel: kernel
+});
+
+// ===============================
+// 6. TPI
+// ===============================
+var tpi = demSmooth.subtract(meanElev).rename("TPI_10m");
+
+// ===============================
+// 7. Visualization
+// ===============================
+var vis = {
+  min: -30,
+  max: 30,
+  palette: ['0000ff', 'ffffff', 'ff0000']
+};
+
+Map.centerObject(roi, 10);
+Map.addLayer(tpi, vis, "TPI 10m");
+
+// ===============================
+// 8. Export (10m GeoTIFF)
+// ===============================
+Export.image.toDrive({
+  image: tpi,
+  description: "TPI_10m_500mScale",
+  folder: "GEE_Outputs",
+  fileNamePrefix: "TPI_10m",
+  region: roi.geometry(),
+  scale: 10,   // 🔥 TRUE 10m export
+  crs: "EPSG:4326",
+  maxPixels: 1e13
+});
