@@ -1,0 +1,63 @@
+// ===============================
+// 1. ROI
+// ===============================
+var roi = ee.FeatureCollection("projects/peaceful-crane-486406-v9/assets/Export_Output");
+
+// ===============================
+// 2. Sentinel-2 Surface Reflectance
+// ===============================
+var s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+  .filterBounds(roi)
+  .filterDate("2024-01-01", "2024-12-31")
+  .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 10));
+
+// ===============================
+// 3. Cloud Mask using SCL band
+// ===============================
+function maskS2clouds(image) {
+  var scl = image.select("SCL");
+  return image.updateMask(
+    scl.neq(3)   // cloud shadow
+      .and(scl.neq(8))   // medium cloud
+      .and(scl.neq(9))   // high cloud
+      .and(scl.neq(10))  // cirrus
+      .and(scl.neq(11))  // snow
+  );
+}
+
+var image = s2.map(maskS2clouds)
+  .median()
+  .clip(roi)
+  .divide(10000);
+
+// ===============================
+// 4. NDWI Calculation
+// McFeeters NDWI
+// NDWI = (GREEN - NIR) / (GREEN + NIR)
+// Sentinel-2: GREEN = B3, NIR = B8
+// ===============================
+var ndwi = image.normalizedDifference(["B3", "B8"]).rename("NDWI_10m");
+
+// ===============================
+// 5. Visualization
+// ===============================
+Map.centerObject(roi, 10);
+Map.addLayer(ndwi, {
+  min: -0.5,
+  max: 0.8,
+  palette: ["brown", "white", "blue"]
+}, "NDWI 10m");
+
+// ===============================
+// 6. Export GeoTIFF
+// ===============================
+Export.image.toDrive({
+  image: ndwi,
+  description: "NDWI_10m",
+  folder: "GEE_Outputs",
+  fileNamePrefix: "NDWI_10m",
+  region: roi.geometry(),
+  scale: 10,
+  crs: "EPSG:4326",
+  maxPixels: 1e13
+});
