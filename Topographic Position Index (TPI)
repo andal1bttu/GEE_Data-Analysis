@@ -62,7 +62,7 @@ Export.image.toDrive({
   folder: "GEE_Outputs",
   fileNamePrefix: "TPI_10m",
   region: roi.geometry(),
-  scale: 10,   // 🔥 TRUE 10m export
+  scale: 10,   //  TRUE 10m export
   crs: "EPSG:4326",
   maxPixels: 1e13
 });
