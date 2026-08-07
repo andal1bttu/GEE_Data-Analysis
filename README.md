@@ -16,6 +16,8 @@ LULC-Classification-GEE/
 ├── README.md
 ├── TPI data analysis
 ├── Rainfall data analysis.
+├── NDVI data Analysis
+    NDSI data Analysis
 ├── NDWI Analysis.
 ├── lulc_worldcover_gee.js
 └── SLOPE_ASPECT_HILLSHADE_gee.js
