@@ -14,7 +14,8 @@ LULC-Classification-GEE/
 │
 ├── LICENSE
 ├── README.md
-├── TPI analysis
+├── TPI data analysis
+├── Rainfall data analysis
 ├── lulc_worldcover_gee.js
 └── SLOPE_ASPECT_HILLSHADE_gee.js
 
