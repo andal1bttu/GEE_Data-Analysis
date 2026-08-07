@@ -1,0 +1,141 @@
+// =====================================
+// ROI
+// =====================================
+var roiFc = ee.FeatureCollection('projects/peaceful-crane-486406-v9/assets/Export_Output');
+var roi = roiFc.geometry();
+
+Map.centerObject(roi, 11);
+Map.addLayer(roiFc.style({color:'000000', width:2, fillColor:'00000000'}), {}, 'ROI');
+
+// =====================================
+// SETTINGS
+// =====================================
+var exportCRS = 'EPSG:32614';   // UTM 14N
+var nativeScale = 1000;        // work at 1 km
+var outScale = 10;             // final export grid 10 m (resampled)
+
+// =====================================
+// 1) DAYMET rainfall total (mm)
+// =====================================
+var start = '2022-01-01';
+var end   = '2022-12-31';
+
+var rain1k = ee.ImageCollection('NASA/ORNL/DAYMET_V4')
+  .filterBounds(roi)
+  .filterDate(start, end)
+  .select('prcp')
+  .sum()
+  .clip(roi)
+  .rename('rain_mm');
+
+// Force a stable 1km projection FIRST (this prevents kernel issues later)
+rain1k = rain1k.reproject({crs: exportCRS, scale: nativeScale});
+
+// =====================================
+// 2) Smooth at 1km only (bands)
+// =====================================
+var rainSmooth1k = rain1k.focal_mean({
+  radius: 6000,
+  units: 'meters'
+}).rename('rain_smooth');
+
+// IMPORTANT: Freeze the result onto the 1km grid (materialize)
+rainSmooth1k = rainSmooth1k
+  .reproject({crs: exportCRS, scale: nativeScale})
+  .clip(roi);
+
+// =====================================
+// 3) Quantile breaks at 1km
+// =====================================
+var q = rainSmooth1k.reduceRegion({
+  reducer: ee.Reducer.percentile([25, 50, 75]),
+  geometry: roi,
+  scale: nativeScale,
+  bestEffort: true,
+  maxPixels: 1e13
+});
+
+q.evaluate(function(d){
+  var p25 = d.rain_smooth_p25;
+  var p50 = d.rain_smooth_p50;
+  var p75 = d.rain_smooth_p75;
+
+  print('Class breaks (mm):', p25, p50, p75);
+
+  // 4-class zones at 1km
+  var cls1k = rainSmooth1k.expression(
+    "(r <= a) ? 1" +
+    ": (r <= b) ? 2" +
+    ": (r <= c) ? 3" +
+    ": 4", {
+      r: rainSmooth1k,
+      a: p25, b: p50, c: p75
+    }).rename('rain_class').toByte();
+
+  // Freeze class grid at 1km
+  cls1k = cls1k.reproject({crs: exportCRS, scale: nativeScale}).clip(roi);
+
+  // =====================================
+  // 4) Create 10m products WITHOUT kernels:
+  // Use reduceResolution + reproject
+  // =====================================
+
+  // Continuous surface to 10m (no kernels; bilinear-ish via mean)
+  var smooth10 = rainSmooth1k
+    .reduceResolution({reducer: ee.Reducer.mean(), maxPixels: 1024})
+    .reproject({crs: exportCRS, scale: outScale})
+    .clip(roi);
+
+  // Class to 10m using mode (keeps classes clean)
+  var cls10 = cls1k
+    .reduceResolution({reducer: ee.Reducer.mode(), maxPixels: 1024})
+    .reproject({crs: exportCRS, scale: outScale})
+    .clip(roi);
+
+  // Palette
+  var palette = ['a63603', 'ffd400', '3bb54a', '08306b'];
+
+  Map.addLayer(cls10, {min:1, max:4, palette: palette}, 'Rainfall zones (4 classes)');
+  Map.addLayer(smooth10, {min:p25, max:p75}, 'Smoothed rainfall (10m)');
+
+  // Boundaries (tiny kernel only)
+  var boundary = cls10
+    .neq(cls10.focal_min(1))
+    .or(cls10.neq(cls10.focal_max(1)))
+    .selfMask();
+
+  Map.addLayer(boundary, {}, 'Zone boundaries');
+
+  // =====================================
+  // 5) Export (these will NOT crash)
+  // =====================================
+  Export.image.toDrive({
+    image: cls10,
+    description: 'Rainfall_Zones_4class_DAYMET_10m',
+    folder: 'GEE_Exports',
+    region: roi,
+    scale: outScale,
+    crs: exportCRS,
+    maxPixels: 1e13
+  });
+
+  Export.image.toDrive({
+    image: smooth10,
+    description: 'Rainfall_Smoothed_DAYMET_10m',
+    folder: 'GEE_Exports',
+    region: roi,
+    scale: outScale,
+    crs: exportCRS,
+    maxPixels: 1e13
+  });
+
+  Export.image.toDrive({
+    image: boundary.toByte(),
+    description: 'Rainfall_Zones_Boundary_10m',
+    folder: 'GEE_Exports',
+    region: roi,
+    scale: outScale,
+    crs: exportCRS,
+    maxPixels: 1e13
+  });
+});
