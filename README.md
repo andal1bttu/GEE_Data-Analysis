@@ -10,7 +10,7 @@
 ## Repository Structure
 
 ```
-LULC-Classification-GEE/
+Geo-AI- Data -Classification-GEE/
 │
 ├── LICENSE
 ├── README.md
