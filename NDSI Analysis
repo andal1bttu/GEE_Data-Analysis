@@ -1,0 +1,62 @@
+// ===============================
+// 1. ROI
+// ===============================
+var roi = ee.FeatureCollection("projects/peaceful-crane-486406-v9/assets/Export_Output");
+
+// ===============================
+// 2. Sentinel-2 Surface Reflectance
+// ===============================
+var s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+  .filterBounds(roi)
+  .filterDate("2024-01-01", "2024-12-31")
+  .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 10));
+
+// ===============================
+// 3. Cloud Mask using SCL band
+// ===============================
+function maskS2clouds(image) {
+  var scl = image.select("SCL");
+  return image.updateMask(
+    scl.neq(3)   // cloud shadow
+      .and(scl.neq(8))   // medium cloud
+      .and(scl.neq(9))   // high cloud
+      .and(scl.neq(10))  // cirrus
+      .and(scl.neq(11))  // snow/cloud-related
+  );
+}
+
+var image = s2.map(maskS2clouds)
+  .median()
+  .clip(roi)
+  .divide(10000);
+
+// ===============================
+// 4. NDSI Calculation
+// NDSI = (GREEN - SWIR) / (GREEN + SWIR)
+// Sentinel-2: GREEN = B3, SWIR = B11
+// ===============================
+var ndsi = image.normalizedDifference(["B3", "B11"]).rename("NDSI_10m");
+
+// ===============================
+// 5. Visualization
+// ===============================
+Map.centerObject(roi, 10);
+Map.addLayer(ndsi, {
+  min: -0.5,
+  max: 1,
+  palette: ["brown", "white", "cyan"]
+}, "NDSI 10m");
+
+// ===============================
+// 6. Export GeoTIFF
+// ===============================
+Export.image.toDrive({
+  image: ndsi,
+  description: "NDSI_10m",
+  folder: "GEE_Outputs",
+  fileNamePrefix: "NDSI_10m",
+  region: roi.geometry(),
+  scale: 10,
+  crs: "EPSG:4326",
+  maxPixels: 1e13
+});
