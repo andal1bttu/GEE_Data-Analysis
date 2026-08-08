@@ -19,6 +19,7 @@ Geo-AI- Data -Classification-GEE/
 ├── NDVI data Analysis
 ├── NDSI data Analysis
 ├── BSI data Analysis.
+├── Hill-shade analysis
 ├── NDWI Analysis.
 ├── lulc_worldcover_gee.js
 └── SLOPE_ASPECT_HILLSHADE_gee.js
